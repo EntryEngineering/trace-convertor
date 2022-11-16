@@ -1,0 +1,19 @@
+.App {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  row-gap: 10px;
+}
+
+.downloadWrapper {
+  display: flex;
+  gap: 20px;
+}
+
+
