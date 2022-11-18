@@ -8,19 +8,36 @@ function App() {
   const [inputFileName, setInputFileName] = useState<string>("");
   const [outputFileName, setOutputFileName] = useState<string>("");
   const [output, setOutput] = useState<string>("");
+  const [isConverting, setConverting] = useState(false);
+  const [conversionProgress, setConversionProgress] = useState<number>(0);
 
-  const handleFileRead = () => {
-    if (fileReader.result) convert(fileReader.result.toString());
+  const handleTrcFileRead = () => {
+    if (fileReader.result) convertTrc(fileReader.result.toString());
+  }
+
+  const handleTraceFileRead = () => {
+    if (fileReader.result) convertTrace(fileReader.result.toString());
   }
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const file: File = e.target.files[0];
-      if (file.name.endsWith(".trc")) {
-        const newFileName = file.name.slice(0, -4);
+      const lastIndex = file.name.lastIndexOf(".");
+      const newFileName = file.name.slice(0, lastIndex);
+      const ext = file.name.slice(lastIndex);
+      if ((ext === ".trc") || (ext === ".trace")) {
         setInputFileName(newFileName);
         fileReader = new FileReader();
-        fileReader.onloadend = handleFileRead;
+        setConversionProgress(0);
+        setConverting(true);
+        switch (ext) {
+          case ".trc":
+            fileReader.onloadend = handleTrcFileRead;
+            break;
+          case ".trace":
+            fileReader.onloadend = handleTraceFileRead;
+            break;
+        }
         fileReader.readAsText(file);
       }
     }
@@ -42,33 +59,80 @@ function App() {
     return dateObject;
   }
 
-  const convert = (text: string) => {
+  const convertTrace = (text: string) => {
     let result = "";
     const lines = text.split(/\r?\n/);
-    const startTimeString = lines[4].split(": ")[1]
-    const date = dateFormat(parseStartTime(startTimeString), "ddd mmm dd HH:MM:ss.l tt yyyy");
+    const lineCount = lines.length;
+    const startTimeString = lines[1].split(": ")[1];
+    const date = dateFormat(new Date(startTimeString), "ddd mmm dd HH:MM:ss.l tt yyyy")
     result += "date " + date + "\n";
     result += "base hex  timestamps absolute\ninternal events logged\n";
 
+    let actPerc = 0;
     for (let i = 0; i < lines.length; i++) {
+      let perc = Math.round(100 / (lineCount / i));
+      if (perc > actPerc) {
+        actPerc = perc;
+        setConversionProgress(perc);
+      }
       const line = lines[i].trim();
-      let resultLine = "";
       if (line.startsWith(";")) continue;
       const lineData = line.split(/\s+/);
-      if (lineData[2] === "DT") {
-        resultLine += "   " + (parseFloat(lineData[1]) / 1000).toString().substring(0, 8); //time ms
-        while (resultLine.length < 11) resultLine += " ";
-        resultLine += " 1"; // channel id
-        resultLine += "  " + lineData[3];
-        for (let j = 0; j < (16 - lineData[3].length); j++) resultLine += " ";
-        resultLine += lineData[4]; // Rx/Tx
-        resultLine += "   d ";
-        resultLine += lineData[5];
-        for (let j = 6; j < (lineData.length); j++) resultLine += " " + lineData[j];
+      if (lineData[0].endsWith(":")) {
+        const data: string[] = [];
+        for (let j = 5; j < (5 + parseInt(lineData[4])); j++) {
+          data.push(lineData[j])
+        }
+        const resultLine = writeLine((parseFloat(lineData[1]) / 1000), "1", lineData[3], lineData[2], parseInt(lineData[4]), data);
         result += resultLine + "\n";
       }
     }
     setOutput(result);
+  }
+
+  const convertTrc = (text: string) => {
+    let result = "";
+    const lines = text.split(/\r?\n/);
+    const lineCount = lines.length;
+    const startTimeString = lines[4].split(": ")[1];
+    const date = dateFormat(parseStartTime(startTimeString), "ddd mmm dd HH:MM:ss.l tt yyyy");
+    result += "date " + date + "\n";
+    result += "base hex  timestamps absolute\ninternal events logged\n";
+
+    let actPerc = 0;
+    for (let i = 0; i < lines.length; i++) {
+      let perc = Math.round(100 / (lineCount / i));
+      if (perc > actPerc) {
+        actPerc = perc;
+        setConversionProgress(perc);
+      }
+      const line = lines[i].trim();
+      if (line.startsWith(";")) continue;
+      const lineData = line.split(/\s+/);
+      if (lineData[2] === "DT") {
+        const data: string[] = [];
+        for (let j = 6; j < (6 + parseInt(lineData[5])); j++) {
+          data.push(lineData[j])
+        }
+        const resultLine = writeLine((parseFloat(lineData[1]) / 1000), "1", lineData[3], lineData[4], parseInt(lineData[5]), data);
+        result += resultLine + "\n";
+      }
+    }
+    setOutput(result);
+  }
+
+  const writeLine = (time: number, channel: string = "1", id: string, direction: string, dataLength: number, data: string[]) => {
+    let line = ""
+    const timeString = time.toString().substring(0, 8);
+    line += "   " + timeString;
+    while (line.length < 11) line += " ";
+    line += " " + channel + "  " + id;
+    for (let i = 0; i < (16 - id.length); i++) line += " ";
+    line += direction + "   d " + dataLength;
+    for (let i = 0; i < dataLength; i++) {
+      line += " " + data[i];
+    }
+    return line;
   }
 
   useEffect(() => {
@@ -82,6 +146,7 @@ function App() {
       document.body.appendChild(link);
       setLink(link);
       setOutputFileName(fileName);
+      setConverting(false);
     }
   }, [output, inputFileName])
 
@@ -94,13 +159,18 @@ function App() {
   return (
     <div className="App">
       <div className="content">
-        <input type="file" accept='.trc' onChange={handleFileInputChange}></input>
+        <input type="file" accept=".trc,.trace" onChange={handleFileInputChange}></input>
         {(link) && (
           <div className="downloadWrapper">
             <button className="downloadButton" key="submit" onClick={handleDownload}>Stáhnout</button>
             <div className="fileName">{outputFileName}</div>
           </div>
         )}
+        {isConverting && (
+          <div className="progress">
+            <div className="progressBar" style={{ width: conversionProgress + '%' }}></div>
+            <span className="percentage">{conversionProgress + "%"}</span>
+          </div>)}
       </div>
 
     </div>
