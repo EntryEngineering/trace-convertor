@@ -160,17 +160,18 @@ function App() {
     <div className="App">
       <div className="content">
         <input type="file" accept=".trc,.trace" onChange={handleFileInputChange}></input>
+        {(isConverting || link) && (
+          <div className="progress">
+            <div className="progressBar" style={{ width: conversionProgress + '%' }}></div>
+            <span className="percentage">{conversionProgress + "%"}</span>
+          </div>)}
         {(link) && (
           <div className="downloadWrapper">
             <button className="downloadButton" key="submit" onClick={handleDownload}>Stáhnout</button>
             <div className="fileName">{outputFileName}</div>
           </div>
         )}
-        {isConverting && (
-          <div className="progress">
-            <div className="progressBar" style={{ width: conversionProgress + '%' }}></div>
-            <span className="percentage">{conversionProgress + "%"}</span>
-          </div>)}
+
       </div>
 
     </div>
